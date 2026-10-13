@@ -1,0 +1,34 @@
+plugins { id 'com.android.application' }
+android {
+    namespace 'com.dailyenglish.app'
+    compileSdk 36
+    defaultConfig {
+        applicationId 'com.dailyenglish.app'
+        minSdk 35
+        targetSdk 36
+        versionCode 17
+        versionName '1.7'
+        ndk { abiFilters (project.findProperty('voiceTestAbi') ?: 'arm64-v8a').toString() }
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        javaCompileOptions { annotationProcessorOptions { arguments += ['room.schemaLocation': "$projectDir/schemas".toString()] } }
+    }
+    compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
+    buildTypes { release { minifyEnabled false } }
+    androidResources { noCompress 'onnx' }
+    testOptions {
+        unitTests.includeAndroidResources = true
+        unitTests.all { systemProperty 'robolectric.dependency.repo.url', 'https://repo.maven.apache.org/maven2' }
+    }
+}
+dependencies {
+    implementation files('libs/sherpa-onnx-1.13.8.aar')
+    implementation 'androidx.activity:activity:1.10.1'
+    implementation 'androidx.room:room-runtime:2.8.4'
+    annotationProcessor 'androidx.room:room-compiler:2.8.4'
+    implementation 'androidx.work:work-runtime:2.10.5'
+    testImplementation 'junit:junit:4.13.2'
+    testImplementation 'org.json:json:20250517'
+    testImplementation 'org.robolectric:robolectric:4.17'
+    androidTestImplementation 'androidx.test:runner:1.6.2'
+    androidTestImplementation 'androidx.test.ext:junit:1.2.1'
+}
