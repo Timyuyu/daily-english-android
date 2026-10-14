@@ -2,7 +2,7 @@
 
 [下载 V1.8 APK、完整源码和男声试听](https://github.com/Timyuyu/daily-english-android/releases/tag/v1.8)
 
-本仓库是私有仓库，下载需要登录拥有访问权限的GitHub账号。APK可覆盖安装，保留本机数据，不要先卸载。
+本仓库已公开，任何人均可下载源码、APK与版本附件，无需登录。APK可覆盖安装，保留本机数据，不要先卸载。
 
 克隆源码前安装Git LFS；模型和下载包由Git LFS管理。如果模型仍是文本指针，先运行 `git lfs pull`。版本页的完整源码ZIP包含离线模型，解压后不依赖Git LFS。
 
