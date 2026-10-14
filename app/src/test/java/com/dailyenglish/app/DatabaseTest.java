@@ -14,6 +14,31 @@ import static org.junit.Assert.*;
 @Config(sdk = 35, application = Application.class)
 @SQLiteMode(SQLiteMode.Mode.NATIVE)
 public class DatabaseTest {
+    @Test public void schemaMigrationPreservesExistingArticleAndFavorites() throws Exception {
+        Context context=RuntimeEnvironment.getApplication();String name="upgrade-v1.db";context.deleteDatabase(name);
+        var path=context.getDatabasePath(name);path.getParentFile().mkdirs();
+        try(var old=android.database.sqlite.SQLiteDatabase.openOrCreateDatabase(path,null)) {
+            old.execSQL("CREATE TABLE articles (id TEXT NOT NULL PRIMARY KEY,date TEXT NOT NULL,period TEXT NOT NULL,title TEXT NOT NULL,english TEXT NOT NULL,chinese TEXT NOT NULL,expressions TEXT NOT NULL,source TEXT NOT NULL,favorite INTEGER NOT NULL,createdAt INTEGER NOT NULL)");
+            old.execSQL("CREATE UNIQUE INDEX index_articles_date_period ON articles (date,period)");
+            old.execSQL("INSERT INTO articles VALUES ('saved','2026-10-13','DAY','Saved title','Original English','完整中文','[]','saved-source',1,1234)");old.setVersion(1);
+        }
+        ArticleDb db=Room.databaseBuilder(context,ArticleDb.class,name).addMigrations(ArticleDb.MIGRATION_1_2).allowMainThreadQueries().build();
+        try {
+            Article article=db.articles().get("saved");assertEquals("Original English",article.english);assertEquals("完整中文",article.chinese);assertTrue(article.favorite);
+            db.articles().remove(article.id);assertTrue(db.articles().deleted(article.id));assertNull(db.articles().get(article.id));
+        } finally {db.close();context.deleteDatabase(name);}
+    }
+    @Test public void removedArticlesStayRemovedAcrossSeedingAndGeneration() throws Exception {
+        Context context=RuntimeEnvironment.getApplication();
+        ArticleDb db=Room.inMemoryDatabaseBuilder(context,ArticleDb.class).allowMainThreadQueries().build();
+        try {
+            db.seed(context);Article imported=db.articles().all().get(0);db.articles().remove(imported.id);
+            Article daily=new Article();daily.id="2026-10-14:DAY";daily.date="2026-10-14";daily.period="DAY";
+            db.articles().insert(daily);db.articles().remove(daily.id);
+            db.seed(context);assertEquals(-1,db.articles().insert(daily));assertEquals(-1,db.articles().insert(imported));
+            assertEquals(19,db.articles().count());assertNull(db.articles().get(imported.id));assertTrue(db.articles().deleted(daily.id));
+        } finally {db.close();}
+    }
     private int count(ArticleDb db,String period) {
         try(var cursor=db.query("SELECT COUNT(*) FROM articles WHERE period=?",new Object[]{period})){cursor.moveToFirst();return cursor.getInt(0);}
     }

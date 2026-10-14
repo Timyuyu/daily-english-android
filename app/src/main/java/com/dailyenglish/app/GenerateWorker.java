@@ -33,7 +33,7 @@ public class GenerateWorker extends Worker {
             for (SlotClock.Slot slot : pending) {
                 if (isStopped()) return Result.retry();
                 if (!KeyVault.configured(context)) return Result.success();
-                if (dao.get(slot.key()) != null) continue;
+                if (dao.get(slot.key()) != null || dao.deleted(slot.key())) continue;
                 try {
                     Article article = DeepSeek.generate(key, slot, dao.recentTitles());
                     if (isStopped()) return Result.retry();

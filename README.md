@@ -1,13 +1,22 @@
-# Daily English Android V1.7
+# Daily English Android V1.8
 
-[下载 V1.7 APK 与完整源码](https://github.com/Timyuyu/daily-english-android/releases/tag/v1.7)
+[下载 V1.8 APK、完整源码和男声试听](https://github.com/Timyuyu/daily-english-android/releases/tag/v1.8)
 
-本仓库是私有仓库，下载需要登录获得访问权限的 GitHub 账号。APK可直接覆盖安装旧版，保留本机数据。
+本仓库是私有仓库，下载需要登录拥有访问权限的GitHub账号。APK可覆盖安装，保留本机数据，不要先卸载。
 
-克隆源码前安装 Git LFS。离线语音模型由Git LFS管理；如果模型仍是文本指针，请先运行 `git lfs pull` 再构建。Release中的 `DailyEnglish-V1.7-source.zip` 包含完整模型，不依赖Git LFS。
+克隆源码前安装Git LFS；模型和下载包由Git LFS管理。如果模型仍是文本指针，先运行 `git lfs pull`。版本页的完整源码ZIP包含离线模型，解压后不依赖Git LFS。
 
 
 简洁原生安卓口语练习应用，面向 vivo X300 / OriginOS 6 / Android 16。最低 Android 15（API 35），目标 Android 16（API 36）。
+
+## V1.8 修复与数据导出
+
+- 设置新增“导出数据包”：Markdown与ZIP两种格式。通过系统文件保存窗口选择位置，默认文件名为最新数据包加北京时间时间戳。无需全部存储权限，保存后可在文件管理中分享。
+- 导出本机所有未删除篇章，包含完整英文、完整中文、表达、时段、日期、来源、收藏状态；生词本包含原释义、词性、原句和复习进度；精句本包含原句和来源标题。ZIP另含data.json和SHA256文件清单，不包含密钥、设置、词典或语音模型。当前提供导出，未提供导入。
+- 全部发音改用Kokoro 82M v1.0 int8的同一个美国男声am_michael（ID16），单词和句子共用美式发音词表及en-us前端。词表中的obsessed为ə b s ˈ ɛ s t。另提供obsessed、comfortable、boundary及两句英文的WAV试听。合成语音仍可能在极短词、同形异音词上出错，不把试听评估替代为真人词典录音保证。
+- 横屏重建时恢复当前篇章ID、时段、英文/中文/表达页签、全屏状态和滚动偏移。恢复等待数据库载入；旧通知中的篇章ID不再覆盖已经选择的篇章。全新启动仍按当前时段选择最新篇章。
+- 目录每行增加“移除”，确认后只删除所选篇章。数据库增加删除记录，启动原文导入和后台生成均不会补回被删篇章；若正在生成时删除，相同事务内的入库检查也会阻止恢复。删除当前篇章会选取该时段下一篇；独立生词本和精句本保留。
+- Room篇章库由版本1迁移到版本2，只新增删除记录表，不重建原篇章表；生词和精句数据库保持不变。离线词典及20篇历史原文字节保持不变。
 
 ## V1.7 新增
 
@@ -43,7 +52,7 @@
 
 - 默认全屏阅读：收起顶部菜单，中文仅保留页签及退出入口；英文另保留紧凑的全文／暂停／继续及语音状态。退出全屏后可选择目录、时段、收藏、语速和循环。返回键先退出全屏，旋转屏幕保留阅读状态。
 - 白天／晚上目录只显示各自分类的内容；选择目录中的篇章后直接进入全屏阅读。
-- 内置Piper Ryan美国英语男声与sherpa-onnx1.13.8推理引擎，完全在手机上合成英语；无需系统TTS语音包、联网、密钥或另外下载。首次准备语音数据需要稍候。安装包约173.6MiB，适配vivo的arm64-v8a架构。第三方原始源码、许可及模型卡一并提供。
+- 内置Kokoro Michael美国英语男声与sherpa-onnx1.13.8推理引擎，完全在手机上合成英语；无需系统TTS语音包、联网、密钥或另外下载。首次准备语音数据需要稍候。安装包大小见验证记录，适配vivo的arm64-v8a架构。第三方原始源码、许可及模型卡一并提供。
 
 ## 功能
 
@@ -55,7 +64,7 @@
 
 ## 手机预览
 
-1. 将 `DailyEnglish-V1.7-preview.apk` 传到手机，直接覆盖安装V1.2／V1.3／V1.4／V1.5／V1.6，不要先卸载。包名和签名保持一致，版本号递增；已保存的原文、收藏和配置保留。这是已签名的debug预览包，适合个人体验，不是商店正式发布包。
+1. 将 `DailyEnglish-V1.8-preview.apk` 传到手机，直接覆盖安装V1.2／V1.3／V1.4／V1.5／V1.6／V1.7，不要先卸载。包名和签名保持一致，版本号递增；已保存的原文、收藏和配置保留。这是已签名的debug预览包，适合个人体验，不是商店正式发布包。
 2. 无需密钥即可离线阅读内置的20个英文版本及对应中文，正文保持来源原文，按主题分为白天／晚上。源消息记录保存在源码数据中，界面不显示技术来源ID。部分表达说明是新增学习注释。
 3. 撤销／轮换曾在聊天中公开的DeepSeek密钥，然后在应用“设置”中输入新密钥并保存。不要把密钥写入源码或发到聊天。API调用会从你的DeepSeek账户扣除用量。
 4. 打开后等待内置离线语音准备完成，点逐句小喇叭或全文播放。首次点击时若正在加载，会在就绪后自动朗读。离线朗读不使用DeepSeek，也不产生API费用。若听不到，检查媒体音量及蓝牙耳机连接。
@@ -97,7 +106,7 @@ Android16 x86_64模拟器测试可使用 `-PvoiceTestAbi=x86_64 :app:connectedDe
 
 ## 验证与限制
 
-具体结果见交付的 `验证记录-V6.md`，V1／V2／V3／V4／V5保留旧版本结果。包含分类升级、目录互斥、原文收藏保留及JNI回调签名复现。真实vivo扬声器播放和OriginOS全天后台触发仍需手机验证；未输入有效新密钥，故没有进行收费的DeepSeek实网生成测试。不能把这些未测项目当作已通过。
+具体结果见交付的 `验证记录-V7.md`，V1／V2／V3／V4／V5保留旧版本结果。包含分类升级、目录互斥、原文收藏保留及JNI回调签名复现。真实vivo扬声器播放和OriginOS全天后台触发仍需手机验证；未输入有效新密钥，故没有进行收费的DeepSeek实网生成测试。不能把这些未测项目当作已通过。
 
 ## 官方参考
 
@@ -112,7 +121,8 @@ Android16 x86_64模拟器测试可使用 `-PvoiceTestAbi=x86_64 :app:connectedDe
 ## 词库与语音来源
 
 - ECDICT固定版本：https://github.com/skywind3000/ECDICT/tree/bc015ed2e24a7abef49fc6dbbb7fe32c1dadaf8b 。应用未调用外部词典或翻译API。
-- Ryan模型卡：https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ryan/high/MODEL_CARD 。模型转换包哈希：6a71edf4d308b9cb2eaeadc8d1f3c6bf96120ecb7fe52c29a2b6e139c59760ed。
+- 当前Kokoro模型：[官方模型与声音](https://huggingface.co/hexgrad/Kokoro-82M)，[Sherpa接口与ID映射](https://k2-fsa.github.io/sherpa/onnx/tts/pretrained_models/kokoro.html)，Apache-2.0许可见assets/voice/LICENSE。转换包SHA256：4c3052abaa60943a341f193888cf6abd68787dae6ab8ae5c925a706caa247e4e。
+- 旧版Ryan模型卡：https://huggingface.co/rhasspy/piper-voices/blob/main/en/en_US/ryan/high/MODEL_CARD 。模型转换包哈希：6a71edf4d308b9cb2eaeadc8d1f3c6bf96120ecb7fe52c29a2b6e139c59760ed。
 - 牛津官方数据入口：https://languages.oup.com/products/oxford-dictionaries-api/ 。当前版本使用独立开源英汉词库；正式牛津词典需要另外取得可内置分发的授权数据。
 
 预览APK为arm64版本；设备测试使用同版本源码、同一语音与词库的x86_64 Android16模拟器。未在用户vivo实机测试，也未使用真实DeepSeek密钥产生付费内容。

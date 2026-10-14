@@ -1,3 +1,8 @@
+Current V1.8 voice: Kokoro 82M v1.0 int8, am_michael, speaker ID16, en-us, 24000Hz. Apache-2.0; full model license in voice/LICENSE.
+Source: https://huggingface.co/hexgrad/Kokoro-82M
+Conversion: https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models
+US lexicon and US eSpeak frontend shared by words and sentences. Earlier Piper models listed below are historical and are not bundled in V1.8.
+
 Offline US English voice: en_US-ljspeech-high (Piper), LJSpeech dataset public domain. Model source: https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/vits-piper-en_US-ljspeech-high.tar.bz2
 
 Inference engine: sherpa-onnx v1.13.8, Apache-2.0. https://github.com/k2-fsa/sherpa-onnx/tree/v1.13.8

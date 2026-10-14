@@ -14,6 +14,78 @@ import static org.junit.Assert.*;
 
 @RunWith(AndroidJUnit4.class)
 public class DeviceTest {
+    private Object field(MainActivity activity,String name) throws Exception {
+        var field=MainActivity.class.getDeclaredField(name);field.setAccessible(true);return field.get(activity);
+    }
+    @Test public void rotationKeepsChosenOriginalAndDirectoryRemovalSurvivesReload() throws Exception {
+        var instrumentation=InstrumentationRegistry.getInstrumentation();Context context=instrumentation.getTargetContext();
+        MainActivity activity=(MainActivity)instrumentation.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        MainActivity rotated=null;Article sample=new Article();sample.id="device-removal-"+System.nanoTime();sample.date=sample.id;sample.period="DAY";sample.title="设备测试可移除篇章";sample.english="A removable test article.";sample.chinese="用于测试的篇章。";sample.createdAt=Long.MAX_VALUE;
+        ArticleDb.get(context).articles().deleteRow("device-removal-18");
+        ArticleDb.get(context).articles().insert(sample);
+        try {
+            waitNode("朗读第1句，美式英语");click("退出全屏");click("篇章目录 / 搜索");click("清晨的上海\n白天版");click("中文");
+            String chosen=((Article)field(activity,"selected")).id;
+            var monitor=instrumentation.addMonitor(MainActivity.class.getName(),null,false);
+            instrumentation.runOnMainSync(()->activity.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE));
+            rotated=(MainActivity)monitor.waitForActivityWithTimeout(15000);instrumentation.removeMonitor(monitor);assertNotNull("Rotation must recreate the activity",rotated);
+            MainActivity target=rotated;
+            for(int i=0;i<100&&field(target,"selected")==null;i++)Thread.sleep(100);
+            assertEquals(chosen,((Article)field(target,"selected")).id);assertEquals(1,field(target,"tab"));
+            assertEquals("DAY",field(target,"period"));waitNode("退出全屏");
+            monitor=instrumentation.addMonitor(MainActivity.class.getName(),null,false);
+            instrumentation.runOnMainSync(()->target.setRequestedOrientation(android.content.pm.ActivityInfo.SCREEN_ORIENTATION_PORTRAIT));
+            rotated=(MainActivity)monitor.waitForActivityWithTimeout(15000);instrumentation.removeMonitor(monitor);assertNotNull(rotated);Thread.sleep(1000);
+            click("退出全屏");click("篇章目录 / 搜索");waitNode("移除篇章 设备测试可移除篇章");screenshot("v18-directory.png");
+            click("移除篇章 设备测试可移除篇章");click("移除");
+            for(int i=0;i<100&&ArticleDb.get(context).articles().get(sample.id)!=null;i++)Thread.sleep(100);
+            assertNull(ArticleDb.get(context).articles().get(sample.id));assertTrue(ArticleDb.get(context).articles().deleted(sample.id));
+            waitNode("篇章目录");assertNull(findNode(instrumentation.getUiAutomation().getRootInActiveWindow(),"移除篇章 设备测试可移除篇章"));
+            assertEquals(-1,ArticleDb.get(context).articles().insert(sample));click("关闭");
+        } finally {
+            MainActivity last=rotated==null?activity:rotated;instrumentation.runOnMainSync(last::finish);
+        }
+    }
+    @Test public void settingsExportsRealOfflineDataThroughSystemDocumentPicker() throws Exception {
+        var instrumentation=InstrumentationRegistry.getInstrumentation();Context context=instrumentation.getTargetContext();
+        MainActivity activity=(MainActivity)instrumentation.startActivitySync(new Intent(context,MainActivity.class).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK));
+        try(var words=new Notebook(context);var sentences=new SentenceBook(context)) {
+            words.add(new OfflineDictionary.Entry("obsessed","a. 着迷的"),"I'm obsessed with learning.");sentences.add("I'm obsessed with learning.","导出测试");
+            waitNode("朗读第1句，美式英语");click("退出全屏");click("设置");click("导出数据包");screenshot("v18-export.png");click("ZIP 数据包");
+            android.view.accessibility.AccessibilityNodeInfo save=null;
+            for(int i=0;i<100&&save==null;i++) {
+                var root=instrumentation.getUiAutomation().getRootInActiveWindow();
+                for(String name:new String[]{"SAVE","Save","保存"}){save=findNode(root,name);if(save!=null)break;}
+                if(save==null)Thread.sleep(100);
+            }
+            assertNotNull("System document picker must offer Save",save);instrumentation.waitForIdleSync();Thread.sleep(700);
+            var filename=inputNode(instrumentation.getUiAutomation().getRootInActiveWindow());assertNotNull(filename);
+            String exportName="DailyEnglish-export-"+System.nanoTime()+".zip";
+            android.os.Bundle filenameArgs=new android.os.Bundle();filenameArgs.putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,exportName);
+            assertTrue(filename.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,filenameArgs));
+            Thread.sleep(500);var bounds=new android.graphics.Rect();waitNode("SAVE").getBoundsInScreen(bounds);
+            long now=android.os.SystemClock.uptimeMillis();
+            var down=android.view.MotionEvent.obtain(now,now,android.view.MotionEvent.ACTION_DOWN,bounds.exactCenterX(),bounds.exactCenterY(),0);
+            var up=android.view.MotionEvent.obtain(now,now+80,android.view.MotionEvent.ACTION_UP,bounds.exactCenterX(),bounds.exactCenterY(),0);
+            assertTrue(instrumentation.getUiAutomation().injectInputEvent(down,true));assertTrue(instrumentation.getUiAutomation().injectInputEvent(up,true));down.recycle();up.recycle();
+            waitNode("设置 · V1.8");Thread.sleep(1500);
+            byte[] saved;
+            try(var input=new android.os.ParcelFileDescriptor.AutoCloseInputStream(instrumentation.getUiAutomation().executeShellCommand("cat /sdcard/Download/"+exportName))){saved=input.readAllBytes();}
+            try(var output=new java.io.FileOutputStream(new java.io.File(context.getExternalFilesDir(null),"v18-system-export.zip"))){output.write(saved);}
+            assertTrue(saved.length>1000);assertEquals('P',saved[0]);assertEquals('K',saved[1]);
+            byte[] exported=DataExport.capture(context,"zip");
+            try(var output=new java.io.FileOutputStream(new java.io.File(context.getExternalFilesDir(null),"v18-export-check.zip"))){output.write(exported);}
+            String data=null;
+            try(var zip=new java.util.zip.ZipInputStream(new java.io.ByteArrayInputStream(exported))) {
+                java.util.zip.ZipEntry entry;while((entry=zip.getNextEntry())!=null)if(entry.getName().equals("data.json"))data=new String(zip.readAllBytes(),java.nio.charset.StandardCharsets.UTF_8);
+            }
+            assertNotNull(data);var json=new org.json.JSONObject(data);assertEquals(ArticleDb.get(context).articles().count(),json.getJSONArray("articles").length());
+            assertTrue(data.contains("obsessed"));assertTrue(data.contains("导出测试"));click("关闭");
+        } finally {
+            try(var words=new Notebook(context);var sentences=new SentenceBook(context)){words.remove("obsessed");sentences.remove("I'm obsessed with learning.");}
+            instrumentation.runOnMainSync(activity::finish);
+        }
+    }
     private void screenshot(String name) throws Exception {
         Thread.sleep(2500); // Let dialog transitions and queued save toasts finish before visual inspection.
         var instrumentation=InstrumentationRegistry.getInstrumentation();var bitmap=instrumentation.getUiAutomation().takeScreenshot();
@@ -159,10 +231,12 @@ public class DeviceTest {
         Context c=InstrumentationRegistry.getInstrumentation().getTargetContext();
         var voice=OfflineVoice.create(c);
         try {
-            var audio=voice.generate("One thing I really like about Shanghai is that doing things alone feels normal.",0,1f);
-            assertEquals(22050,audio.getSampleRate());assertTrue(audio.getSamples().length>22050);
+            var audio=voice.generate("One thing I really like about Shanghai is that doing things alone feels normal.",OfflineVoice.SPEAKER,1f);
+            assertEquals(24000,audio.getSampleRate());assertTrue(audio.getSamples().length>24000);
             double energy=0;for(float sample:audio.getSamples())energy+=sample*sample;
             assertTrue("Synthesized audio must not be silent",Math.sqrt(energy/audio.getSamples().length)>0.005);
+            var word=voice.generate("obsessed",OfflineVoice.SPEAKER,1f);assertTrue(word.getSamples().length>5000);
+            energy=0;for(float sample:word.getSamples())energy+=sample*sample;assertTrue(Math.sqrt(energy/word.getSamples().length)>0.005);
         } finally {voice.release();}
     }
     @Test public void roomDeduplicatesWithoutLosingFavorites() throws Exception {

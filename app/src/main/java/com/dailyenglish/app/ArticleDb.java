@@ -5,13 +5,18 @@ import androidx.room.*;
 import org.json.*;
 import java.nio.charset.StandardCharsets;
 
-@Database(entities = {Article.class}, version = 1, exportSchema = true)
+@Database(entities = {Article.class,DeletedArticle.class}, version = 2, exportSchema = true)
 public abstract class ArticleDb extends RoomDatabase {
+    public static final androidx.room.migration.Migration MIGRATION_1_2=new androidx.room.migration.Migration(1,2) {
+        @Override public void migrate(androidx.sqlite.db.SupportSQLiteDatabase db) {
+            db.execSQL("CREATE TABLE IF NOT EXISTS deleted_articles (id TEXT NOT NULL, PRIMARY KEY(id))");
+        }
+    };
     private static volatile ArticleDb instance;
     public abstract ArticleDao articles();
     public static ArticleDb get(Context context) {
         if (instance == null) synchronized (ArticleDb.class) {
-            if (instance == null) instance = Room.databaseBuilder(context.getApplicationContext(), ArticleDb.class, "daily-english.db").build();
+            if (instance == null) instance = Room.databaseBuilder(context.getApplicationContext(), ArticleDb.class, "daily-english.db").addMigrations(MIGRATION_1_2).build();
         }
         return instance;
     }

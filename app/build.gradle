@@ -6,8 +6,8 @@ android {
         applicationId 'com.dailyenglish.app'
         minSdk 35
         targetSdk 36
-        versionCode 17
-        versionName '1.7'
+        versionCode 18
+        versionName '1.8'
         ndk { abiFilters (project.findProperty('voiceTestAbi') ?: 'arm64-v8a').toString() }
         testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
         javaCompileOptions { annotationProcessorOptions { arguments += ['room.schemaLocation': "$projectDir/schemas".toString()] } }

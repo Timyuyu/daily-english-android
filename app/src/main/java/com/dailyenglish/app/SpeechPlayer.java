@@ -65,7 +65,7 @@ public final class SpeechPlayer {
                 if(!active(token))return;
                 // The native callback expects Kotlin's typed invoke(float[]), which a Java lambda does not expose.
                 // Use the no-callback API; pause/selection changes discard completed stale synthesis below.
-                GeneratedAudio generated=tts.generate(text,0,speed);
+                GeneratedAudio generated=tts.generate(text.replace('’','\'').trim(),OfflineVoice.SPEAKER,speed);
                 if(!active(token))return;
                 float[] samples=generated.getSamples();
                 if(samples.length==0)throw new IllegalStateException("语音为空");

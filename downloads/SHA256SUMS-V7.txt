@@ -1,0 +1,5 @@
+f085c473badaef654a43d0c665ab262417ba86edb71b1fadc5efe596eaefde78  DailyEnglish-V1.8-preview.apk
+0ee44c8d27da75951ad73ba48d7a262a5ee7952347259c47eb3bcd32a8cb670b  DailyEnglish-V1.8-source.zip
+3060a75cc5821325f597d51c4f58ec5152c7ee5534e271b1ea5bd2dcd185f02f  DailyEnglish-V1.8-美式男声试听.wav
+757695e0888d4967693bff7f2f8a737eb6218abbe18098018a5f9fb2060dea86  安装说明-V7.md
+7d8f96ed779413ce756100d4d952af74dd8ee6b4495e95fa176d96ba262ea8e4  验证记录-V7.md

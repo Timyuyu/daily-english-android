@@ -17,6 +17,56 @@ import static org.junit.Assert.*;
 @LooperMode(LooperMode.Mode.PAUSED)
 @GraphicsMode(GraphicsMode.Mode.NATIVE)
 public class ActivityTest {
+    private Object field(MainActivity activity,String name) throws Exception {
+        var field=MainActivity.class.getDeclaredField(name);field.setAccessible(true);return field.get(activity);
+    }
+    private void loaded(MainActivity activity) throws Exception {
+        for(int i=0;i<200;i++){Shadows.shadowOf(Looper.getMainLooper()).idle();if(field(activity,"selected")!=null)return;Thread.sleep(10);}
+        fail("Article must load");
+    }
+    @Test public void recreationPreservesSelectedArticleEvenWithAnOlderNotificationIntent() throws Exception {
+        var intent=new android.content.Intent(RuntimeEnvironment.getApplication(),MainActivity.class).putExtra("article_id","archive-3260206dac56b195");
+        var controller=Robolectric.buildActivity(MainActivity.class,intent).setup();
+        try {
+            MainActivity activity=controller.get();loaded(activity);View root=activity.getWindow().getDecorView();
+            find(root,"退出全屏").performClick();find(root,"篇章目录 / 搜索").performClick();Shadows.shadowOf(Looper.getMainLooper()).idle();
+            AlertDialog directory=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            editionEntry(directory.getWindow().getDecorView()).performClick();
+            Article chosen=(Article)field(activity,"selected");assertNotEquals("archive-3260206dac56b195",chosen.id);
+            find(root,"中文").performClick();controller.recreate();loaded(controller.get());
+            assertEquals(chosen.id,((Article)field(controller.get(),"selected")).id);assertEquals(1,field(controller.get(),"tab"));
+            assertTrue((boolean)field(controller.get(),"readingMode"));
+        } finally {controller.pause().stop().destroy();}
+    }
+    @Test public void automaticallySelectedArticleSurvivesRecreationAfterNewerContentArrives() throws Exception {
+        var controller=Robolectric.buildActivity(MainActivity.class).setup();
+        android.content.Context context=controller.get();String[] added={null};
+        try {
+            MainActivity activity=controller.get();loaded(activity);Article chosen=(Article)field(activity,"selected");
+            android.os.Bundle state=new android.os.Bundle();controller.saveInstanceState(state);
+            Article newer=new Article();newer.id="2026-10-14:"+chosen.period;newer.date="2026-10-14";newer.period=chosen.period;newer.createdAt=Long.MAX_VALUE;
+            added[0]=newer.id;
+            DailyApp.IO.submit(()->ArticleDb.get(activity).articles().insert(newer)).get(5,java.util.concurrent.TimeUnit.SECONDS);
+            controller.pause().stop().destroy();
+            controller=Robolectric.buildActivity(MainActivity.class).create(state).start().resume().visible();loaded(controller.get());
+            assertEquals(chosen.id,((Article)field(controller.get(),"selected")).id);
+        } finally {DailyApp.IO.submit(()->{if(added[0]!=null)ArticleDb.get(context).articles().deleteRow(added[0]);}).get();controller.pause().stop().destroy();}
+    }
+    @Test public void exportPickerOffersBothFormatsAndUsesSystemSaveWindow() throws Exception {
+        var controller=Robolectric.buildActivity(MainActivity.class).setup();
+        try {
+            View root=controller.get().getWindow().getDecorView();find(root,"退出全屏").performClick();find(root,"设置").performClick();
+            AlertDialog settings=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();find(settings.getWindow().getDecorView(),"导出数据包").performClick();
+            AlertDialog formats=org.robolectric.shadows.ShadowAlertDialog.getLatestAlertDialog();
+            assertEquals("Markdown (.md)",formats.getButton(AlertDialog.BUTTON_POSITIVE).getText());
+            formats.getButton(AlertDialog.BUTTON_NEUTRAL).performClick();
+            Shadows.shadowOf(Looper.getMainLooper()).idle();
+            android.content.Intent launch=Shadows.shadowOf(controller.get()).getNextStartedActivityForResult().intent;
+            assertEquals(android.content.Intent.ACTION_CREATE_DOCUMENT,launch.getAction());assertEquals("application/zip",launch.getType());
+            assertTrue(launch.getStringExtra(android.content.Intent.EXTRA_TITLE).endsWith(".zip"));
+            android.os.Bundle state=new android.os.Bundle();controller.saveInstanceState(state);assertEquals("zip",state.getString("exportFormat"));
+        } finally {controller.pause().stop().destroy();}
+    }
     private Button find(View view,String text) {
         if(view instanceof Button b && b.getText().toString().equals(text)) return b;
         if(view instanceof ViewGroup g) for(int i=0;i<g.getChildCount();i++){Button found=find(g.getChildAt(i),text);if(found!=null)return found;}

@@ -23,6 +23,26 @@ public class MainActivity extends ComponentActivity {
     private static final int INK=Color.rgb(27,44,43), MUTED=Color.rgb(96,115,110), GREEN=Color.rgb(35,108,97), BG=Color.rgb(244,246,245);
     private LinearLayout root, menuPanel, content, titleArea, controls, playbackControls;
     private TextView sync, speech;
+    private ScrollView readingScroll;
+    private int restoredScroll=-1;
+    private boolean articlesLoaded;
+    private Runnable directoryRefresh;
+    private String exportFormat="md";
+    private final androidx.activity.result.ActivityResultLauncher<Intent> exportFile=registerForActivityResult(
+            new androidx.activity.result.contract.ActivityResultContracts.StartActivityForResult(),result->{
+        if(result.getResultCode()!=RESULT_OK||result.getData()==null||result.getData().getData()==null)return;
+        Uri destination=result.getData().getData();String format=exportFormat;
+        toast("正在导出全部学习数据…");
+        DailyApp.IO.execute(()->{
+            try {
+                byte[] data=DataExport.capture(this,format);
+                try(var output=getContentResolver().openOutputStream(destination,"wt")) {
+                    if(output==null)throw new java.io.IOException("无法打开文件");output.write(data);
+                }
+                runOnUiThread(()->{if(!isDestroyed())toast("数据包已保存，可从文件管理中分享");});
+            } catch(Exception e){runOnUiThread(()->{if(!isDestroyed())toast("导出失败，请重新选择保存位置");});}
+        });
+    });
     private Button day, night, readingToggle;
     private SpeechPlayer player;
     private VocabularyUi vocabulary;
@@ -43,9 +63,9 @@ public class MainActivity extends ComponentActivity {
 
     @Override public void onCreate(Bundle state) {
         super.onCreate(state);
-        if (state!=null) { period=state.getString("period",period); selectedId=state.getString("article"); pinned=state.getBoolean("pinned"); manualPeriod=state.getBoolean("manual"); tab=state.getInt("tab"); readingMode=state.getBoolean("reading",true); }
+        if (state!=null) { period=state.getString("period",period); selectedId=state.getString("article"); pinned=selectedId!=null; manualPeriod=state.getBoolean("manual"); tab=state.getInt("tab"); readingMode=state.getBoolean("reading",true);restoredScroll=state.getInt("scroll",0);exportFormat=state.getString("exportFormat","md"); }
         String notificationId=getIntent().getStringExtra("article_id");
-        if (notificationId!=null) { selectedId=notificationId; pinned=true; }
+        if (state==null&&notificationId!=null) { selectedId=notificationId; pinned=true; }
         build();
         getOnBackPressedDispatcher().addCallback(this,readingBack);
         player=new SpeechPlayer(this,(message,sentence)-> {
@@ -54,7 +74,7 @@ public class MainActivity extends ComponentActivity {
         });
         vocabulary=new VocabularyUi(this,player);
         player.setRate(getSharedPreferences("settings",MODE_PRIVATE).getFloat("rate",1f));
-        ArticleDb.get(this).articles().observeAll().observe(this,data->{ articles=data; choose(); updateStatus(); });
+        ArticleDb.get(this).articles().observeAll().observe(this,data->{ articles=data;articlesLoaded=true; choose(); updateStatus();if(directoryRefresh!=null)directoryRefresh.run(); });
         getSharedPreferences("settings",MODE_PRIVATE).registerOnSharedPreferenceChangeListener(prefListener);
         connectivity=getSystemService(ConnectivityManager.class);
         connectivity.registerDefaultNetworkCallback(networkCallback);
@@ -76,6 +96,7 @@ public class MainActivity extends ComponentActivity {
         super.onSaveInstanceState(state);
         state.putString("period",period);state.putString("article",selectedId);state.putBoolean("pinned",pinned);state.putBoolean("manual",manualPeriod);state.putInt("tab",tab);
         state.putBoolean("reading",readingMode);
+        state.putInt("scroll",readingScroll.getScrollY());state.putString("exportFormat",exportFormat);
     }
     private void build() {
         root=column(); root.setBackgroundColor(BG); root.setPadding(dp(20),dp(8),dp(20),0);
@@ -97,7 +118,7 @@ public class MainActivity extends ComponentActivity {
         sync=text("",12);sync.setPadding(0,dp(6),0,dp(8));menuPanel.addView(sync);
         titleArea=column();menuPanel.addView(titleArea);
         LinearLayout tabs=row();
-        for (int i=0;i<3;i++) { int n=i; weighted(tabs,button(new String[]{"英文","中文","表达"}[i],()-> { tab=n;renderBody(); })); }
+        for (int i=0;i<3;i++) { int n=i; weighted(tabs,button(new String[]{"英文","中文","表达"}[i],()-> { tab=n;readingScroll.scrollTo(0,0);renderBody(); })); }
         readingToggle=button("退出全屏",()->setReadingMode(!readingMode));weighted(tabs,readingToggle);
         root.addView(tabs);
         controls=column(); LinearLayout playback=row();playbackControls=playback;
@@ -115,7 +136,7 @@ public class MainActivity extends ComponentActivity {
         }); options.addView(speed,new LinearLayout.LayoutParams(0,dp(48),1));
         CheckBox loop=new CheckBox(this);loop.setText("循环全文");loop.setTextSize(13);loop.setOnCheckedChangeListener((b,checked)->player.repeat=checked);options.addView(loop);controls.addView(options);
         root.addView(controls);speech=text("正在准备内置美式离线语音…",12);speech.setMaxLines(2);speech.setEllipsize(TextUtils.TruncateAt.END);root.addView(speech);
-        ScrollView scroll=new ScrollView(this);scroll.setTag("reading-body");scroll.setFillViewport(true);content=column();content.setTag("article-content");content.setPadding(0,dp(12),0,dp(24));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
+        ScrollView scroll=new ScrollView(this);readingScroll=scroll;scroll.setTag("reading-body");scroll.setFillViewport(true);content=column();content.setTag("article-content");content.setPadding(0,dp(12),0,dp(24));scroll.addView(content);root.addView(scroll,new LinearLayout.LayoutParams(-1,0,1));
         setReadingMode(readingMode);
     }
     private void setReadingMode(boolean enabled) {
@@ -130,12 +151,14 @@ public class MainActivity extends ComponentActivity {
     }
     private void switchPeriod(String p) { period=p;manualPeriod=true;pinned=false;selectedId=null;choose(); }
     private void choose() {
+        if(!articlesLoaded)return;
         Article chosen=null;
         if(pinned) chosen=articles.stream().filter(a->a.id.equals(selectedId)).findFirst().orElse(null);
         if(chosen==null) chosen=articles.stream().filter(a->a.period.equals(period)).findFirst().orElse(null);
         if(chosen!=null&&pinned)period=chosen.period;
         boolean changed=selected==null || chosen==null || !selected.id.equals(chosen.id);
         selected=chosen; if(selected!=null)selectedId=selected.id;
+        if(changed&&restoredScroll<0)readingScroll.scrollTo(0,0);
         if(changed && player!=null) player.load(selected==null?List.of():SlotClock.sentences(selected.english));
         day.setTextColor(period.equals("DAY")?GREEN:MUTED);night.setTextColor(period.equals("NIGHT")?GREEN:MUTED);
         titleArea.removeAllViews();
@@ -148,8 +171,9 @@ public class MainActivity extends ComponentActivity {
         renderBody();
     }
     private void renderBody() {
+        int position=restoredScroll>=0?restoredScroll:readingScroll.getScrollY();
         content.removeAllViews();updateReadingControls();
-        if(selected==null){ content.addView(text("篇章正在载入，请稍候。",18));return; }
+        if(selected==null){ content.addView(text(articlesLoaded?"此时段暂无篇章，可切换时段或打开篇章目录。":"篇章正在载入，请稍候。",18));return; }
         if(tab==0){
             List<String> sentences=SlotClock.sentences(selected.english);
             for(int i=0;i<sentences.size();i++){
@@ -167,6 +191,7 @@ public class MainActivity extends ComponentActivity {
                 TextView en=text(e.getString("en"),19);en.setTypeface(null,Typeface.BOLD);vocabulary.enableWords(en,e.getString("en"));box.addView(en);box.addView(text(e.getString("zh"),16));content.addView(box);
             }} catch(JSONException e){content.addView(text("这篇原文未提供表达列表。",16));}
         }
+        restoredScroll=-1;readingScroll.post(()->readingScroll.scrollTo(0,position));
     }
     private void updateStatus() {
         if(sync==null)return;
@@ -194,13 +219,22 @@ public class MainActivity extends ComponentActivity {
                 if(!(a.title+" "+a.english+" "+a.chinese).toLowerCase(Locale.ROOT).contains(q))continue;
                 String edition=a.period.equals("DAY")?"白天版":"晚上版";
                 Button entry=button(a.title+"\n"+(a.id.startsWith("archive-")?edition:a.date+" · "+edition)+(a.favorite?" ★":""),()->{pinned=true;selectedId=a.id;period=a.period;choose();setReadingMode(true);dialog.dismiss();});
-                entry.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);entry.setSingleLine(false);list.addView(entry);count++;
+                entry.setGravity(Gravity.START|Gravity.CENTER_VERTICAL);entry.setSingleLine(false);
+                LinearLayout item=row();item.addView(entry,new LinearLayout.LayoutParams(0,-2,1));
+                Button remove=button("移除",()->{});remove.setContentDescription("移除篇章 "+a.title);
+                remove.setOnClickListener(v->new AlertDialog.Builder(this).setTitle("移除篇章")
+                        .setMessage("移除《"+a.title+"》？删除后不会自动补回，已收藏的生词和精句保留。建议先在设置中导出数据包。")
+                        .setPositiveButton("移除",(d,w)->{
+                            remove.setEnabled(false);
+                            DailyApp.IO.execute(()->ArticleDb.get(this).articles().remove(a.id));
+                        }).setNegativeButton("取消",null).show());
+                item.addView(remove,new LinearLayout.LayoutParams(dp(64),dp(48)));list.addView(item);count++;
             }
             if(count==0)list.addView(text(favoritesOnly?"还没有收藏，点击篇章旁的 ☆ 添加。":"没有匹配的篇章。",16));
         };
         search.addTextChangedListener(new TextWatcher(){public void beforeTextChanged(CharSequence s,int st,int c,int a){}public void onTextChanged(CharSequence s,int st,int before,int count){populate.run();}public void afterTextChanged(Editable e){}});
         filter.setOnItemSelectedListener(new AdapterView.OnItemSelectedListener(){public void onItemSelected(AdapterView<?> p,View v,int pos,long id){populate.run();}public void onNothingSelected(AdapterView<?> p){}});
-        populate.run();dialog.show();
+        directoryRefresh=populate;dialog.setOnDismissListener(d->directoryRefresh=null);populate.run();dialog.show();
     }
     private void settings() {
         LinearLayout body=column();body.setPadding(dp(20),dp(8),dp(20),dp(8));
@@ -210,12 +244,16 @@ public class MainActivity extends ComponentActivity {
         key.setInputType(android.text.InputType.TYPE_CLASS_TEXT|android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD);key.setTransformationMethod(PasswordTransformationMethod.getInstance());key.setSingleLine(true);key.setSaveEnabled(false);key.setImportantForAutofill(View.IMPORTANT_FOR_AUTOFILL_NO);body.addView(key);
         body.addView(text("模型：DeepSeek Flash · 已到时的每篇内容会产生少量 API 用量。",12));
         body.addView(button("现在检查 / 补生成",()->{Scheduler.catchUp(this);toast("已安排联网补生成");}));
+        body.addView(button("导出数据包",()->new AlertDialog.Builder(this).setTitle("导出全部学习数据")
+                .setMessage("包含全部篇章、完整中英原文、表达、生词及复习进度、精句及来源。可保存后发给别人。")
+                .setPositiveButton("Markdown (.md)",(d,w)->exportData("md"))
+                .setNeutralButton("ZIP 数据包",(d,w)->exportData("zip")).setNegativeButton("取消",null).show()));
         body.addView(button("开启新篇章通知",()->{if(checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS)!=PackageManager.PERMISSION_GRANTED) requestPermissions(new String[]{Manifest.permission.POST_NOTIFICATIONS},10);else open(new Intent(Settings.ACTION_APP_NOTIFICATION_SETTINGS).putExtra(Settings.EXTRA_APP_PACKAGE,getPackageName()));}));
-        body.addView(button("内置离线语音说明",()->new AlertDialog.Builder(this).setTitle("美式英语离线朗读").setMessage("已内置美国英语男声 Ryan，无需联网、密钥或另外下载语音包。首次打开会准备本机语音数据，请稍候。\n\n点每句小喇叭或全文播放即可朗读已保存内容。如没声音，请调高手机媒体音量，并检查是否连着蓝牙耳机。").setPositiveButton("知道了",null).show()));
+        body.addView(button("内置离线语音说明",()->new AlertDialog.Builder(this).setTitle("美式英语离线朗读").setMessage("已内置 Kokoro 美国英语男声 Michael 和美式发音词表。篇章单词、生词本、复习、句子和全文使用同一个声音，无需联网、密钥或另外下载语音包。首次打开会准备本机语音数据，请稍候。\n\n这是合成语音；同形异音词仍可能需要结合语境判断。如没声音，请调高手机媒体音量，并检查是否连着蓝牙耳机。").setPositiveButton("知道了",null).show()));
         body.addView(button("OriginOS 后台运行说明",this::backgroundHelp));
         body.addView(button("删除已保存密钥",()->new AlertDialog.Builder(this).setMessage("删除后停止新的生成请求，已保存篇章保留。正在进行的请求可能已经发出。").setPositiveButton("删除",(d,w)->{KeyVault.clear(this);toast("密钥已删除");updateStatus();}).setNegativeButton("取消",null).show()));
         ScrollView scroll=new ScrollView(this);scroll.addView(body);
-        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("设置 · V1.7").setView(scroll).setPositiveButton("保存",null).setNegativeButton("关闭",null).create();
+        AlertDialog dialog=new AlertDialog.Builder(this).setTitle("设置 · V1.8").setView(scroll).setPositiveButton("保存",null).setNegativeButton("关闭",null).create();
         dialog.getWindow().addFlags(WindowManager.LayoutParams.FLAG_SECURE);
         dialog.setOnShowListener(d->{dialog.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener(v->{
             String value=key.getText().toString().trim();
@@ -225,6 +263,13 @@ public class MainActivity extends ComponentActivity {
                 catch(Exception e){runOnUiThread(()->key.setError(e instanceof IllegalArgumentException?"密钥格式不正确":"保存失败，请重新输入"));}
             });
         });});dialog.show();
+    }
+    private void exportData(String format) {
+        exportFormat=format;
+        Intent intent=new Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE)
+                .setType(format.equals("zip")?"application/zip":"text/markdown")
+                .putExtra(Intent.EXTRA_TITLE,"最新数据包-"+ZonedDateTime.now(SlotClock.ZONE).format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss"))+"."+format);
+        try{exportFile.launch(intent);}catch(ActivityNotFoundException e){toast("找不到文件保存窗口，请启用系统文件管理");}
     }
     private void backgroundHelp() {
         new AlertDialog.Builder(this).setTitle("OriginOS 后台运行")

@@ -8,17 +8,19 @@ import java.nio.file.Files;
 import java.nio.file.StandardCopyOption;
 
 public final class OfflineVoice {
-    public static final String MODEL="voice/en_US-ryan-high.onnx";
+    public static final String MODEL="voice/model.int8.onnx";
+    public static final int SPEAKER=16; // Kokoro 1.0 am_michael, American English male.
     public static synchronized OfflineTts create(Context context) throws IOException {
-        File directory=new File(context.getNoBackupFilesDir(),"voice-ryan-v1/espeak-ng-data");
+        File directory=new File(context.getNoBackupFilesDir(),"voice-kokoro-v1/espeak-ng-data");
         File marker=new File(directory.getParentFile(),"ready");
         if(!marker.exists()) {
             copy(context.getAssets(),"voice/espeak-ng-data",directory);
             if(!marker.createNewFile()) throw new IOException("语音数据初始化失败");
         }
-        OfflineTtsVitsModelConfig vits=new OfflineTtsVitsModelConfig();
-        vits.setModel(MODEL);vits.setTokens("voice/tokens.txt");vits.setDataDir(directory.getAbsolutePath());
-        OfflineTtsModelConfig model=new OfflineTtsModelConfig();model.setVits(vits);model.setNumThreads(2);model.setDebug(false);
+        OfflineTtsKokoroModelConfig voice=new OfflineTtsKokoroModelConfig();
+        voice.setModel(MODEL);voice.setVoices("voice/voices.bin");voice.setTokens("voice/tokens.txt");
+        voice.setDataDir(directory.getAbsolutePath());voice.setLexicon("voice/lexicon-us-en.txt");voice.setLang("en-us");
+        OfflineTtsModelConfig model=new OfflineTtsModelConfig();model.setKokoro(voice);model.setNumThreads(2);model.setDebug(false);
         OfflineTtsConfig config=new OfflineTtsConfig();config.setModel(model);
         return new OfflineTts(context.getAssets(),config);
     }
